@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: dashboard (3001)",
+      "type": "shell",
+      "command": "npm run dev:3001",
+      "options": {
+        "cwd": "${workspaceFolder}\\smeal-chaos-litmus-demo"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "build: dashboard",
+      "type": "shell",
+      "command": "npm run build",
+      "options": {
+        "cwd": "${workspaceFolder}\\smeal-chaos-litmus-demo"
+      },
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    }
+  ]
+}

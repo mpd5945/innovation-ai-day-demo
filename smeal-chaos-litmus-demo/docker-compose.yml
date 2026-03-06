@@ -1,0 +1,13 @@
+services:
+  demo:
+    build:
+      context: .
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env.docker
+    environment:
+      - GRID_NORTHEAST_URL=http://host.docker.internal:30081
+      - GRID_SOUTHEAST_URL=http://host.docker.internal:30082
+      - GRID_CENTRAL_URL=http://host.docker.internal:30083
+      - GRID_WESTERN_URL=http://host.docker.internal:30084

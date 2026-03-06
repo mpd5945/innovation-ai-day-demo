@@ -1,0 +1,67 @@
+##
+## Experiment 3 — CPU Hog (Central Sector)
+## ────────────────────────────────────────
+## Scenario: "Peak demand surge overwhelms a sector controller."
+##
+## Probe: ct-cpu-hog-health-probe
+##   Continuously checks the Central sector healthz endpoint.
+##   Validates the sector survives CPU contention.
+##
+## Usage:
+##   kubectl apply -f k8s/engine-central-cpu-hog.yml
+##
+## Cleanup:
+##   kubectl delete chaosengine grid-central-cpu-hog -n smeal-day
+##
+
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: grid-central-cpu-hog
+  namespace: smeal-day
+  labels:
+    context: grid-sector-central
+    experiment: pod-cpu-hog
+spec:
+  engineState: "active"
+  annotationCheck: "false"
+  appinfo:
+    appns: smeal-day
+    applabel: "app=grid-sector-central"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-cpu-hog
+      spec:
+        components:
+          env:
+            ## Duration of chaos (seconds)
+            - name: TOTAL_CHAOS_DURATION
+              value: "120"
+            ## Number of CPU cores to stress
+            - name: CPU_CORES
+              value: "2"
+            ## Percentage of pods to target
+            - name: PODS_AFFECTED_PERC
+              value: "100"
+            ## Container runtime
+            - name: CONTAINER_RUNTIME
+              value: "docker"
+            - name: SOCKET_PATH
+              value: "/var/run/docker.sock"
+        probe:
+          - name: "ct-cpu-hog-health-probe"
+            type: "httpProbe"
+            mode: "Edge"
+            httpProbe/inputs:
+              url: "http://grid-sector-central.smeal-day.svc.cluster.local:3000/healthz"
+              insecureSkipVerify: false
+              method:
+                get:
+                  criteria: "=="
+                  responseCode: "200"
+            runProperties:
+              probeTimeout: "8s"
+              interval: "10s"
+              retry: 3
+              probePollingInterval: "3s"

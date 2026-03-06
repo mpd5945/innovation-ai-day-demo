@@ -1,0 +1,27 @@
+# Node
+node_modules/
+.npm
+
+# Next.js
+smeal-chaos-litmus-demo/.next/
+smeal-chaos-litmus-demo/out/
+smeal-chaos-litmus-demo/.turbo/
+
+# Build output
+smeal-chaos-litmus-demo/.next/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+smeal-chaos-litmus-demo/.env
+smeal-chaos-litmus-demo/.env.local
+smeal-chaos-litmus-demo/.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+*.swp

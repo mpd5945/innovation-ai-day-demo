@@ -1,0 +1,70 @@
+##
+## Experiment 2 — Network Latency (Southeast Sector)
+## ──────────────────────────────────────────────────
+## Scenario: "The system is up, but coordination is slow."
+##
+## Probe: se-network-latency-health-probe
+##   Continuously checks the SE sector healthz endpoint.
+##   Validates the sector remains reachable (even if degraded) under latency.
+##
+## Usage:
+##   kubectl apply -f k8s/engine-southeast-network-latency.yml
+##
+## Cleanup:
+##   kubectl delete chaosengine grid-southeast-network-latency -n smeal-day
+##
+
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: grid-southeast-network-latency
+  namespace: smeal-day
+  labels:
+    context: grid-sector-southeast
+    experiment: pod-network-latency
+spec:
+  engineState: "active"
+  annotationCheck: "false"
+  appinfo:
+    appns: smeal-day
+    applabel: "app=grid-sector-southeast"
+    appkind: deployment
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-network-latency
+      spec:
+        components:
+          env:
+            ## Duration of chaos (seconds)
+            - name: TOTAL_CHAOS_DURATION
+              value: "90"
+            ## Injected latency in milliseconds
+            - name: NETWORK_LATENCY
+              value: "2000"
+            ## Network interface to target
+            - name: NETWORK_INTERFACE
+              value: "eth0"
+            ## Percentage of pods to target
+            - name: PODS_AFFECTED_PERC
+              value: "100"
+            ## Container runtime
+            - name: CONTAINER_RUNTIME
+              value: "docker"
+            - name: SOCKET_PATH
+              value: "/var/run/docker.sock"
+        probe:
+          - name: "se-network-latency-health-probe"
+            type: "httpProbe"
+            mode: "Edge"
+            httpProbe/inputs:
+              url: "http://grid-sector-southeast.smeal-day.svc.cluster.local:3000/healthz"
+              insecureSkipVerify: false
+              method:
+                get:
+                  criteria: "=="
+                  responseCode: "200"
+            runProperties:
+              probeTimeout: "3s"
+              interval: "5s"
+              retry: 2
+              probePollingInterval: "2s"
