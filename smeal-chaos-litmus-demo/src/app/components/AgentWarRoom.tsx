@@ -225,10 +225,110 @@ function parseLossRate(sectorId: SectorTargetId): number {
   return rates[sectorId] ?? 100000;
 }
 
-function computeGrade(attackTimeSec: number, optimalTriage: boolean): string {
+/* ─── Decision 2: Escalation priority (after analyst brief) ─────────────── */
+
+interface EscalationOption {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  optimal: boolean;
+  penaltySec: number;
+}
+
+const ESCALATION_DECISIONS: Record<
+  SectorTargetId,
+  { prompt: string; options: EscalationOption[] }
+> = {
+  northeast: {
+    prompt: "AI Analyst confirms active intrusion. You have limited response bandwidth. What do you prioritize first?",
+    options: [
+      { id: "defend",   label: "Harden the perimeter",     icon: "🛡️", description: "Immediately lock down inbound attack vectors and isolate the blast radius", optimal: true,  penaltySec: 0 },
+      { id: "notify",  label: "Notify stakeholders first", icon: "📢", description: "Alert Fidelity, Raytheon, and hospital contacts before executing containment", optimal: false, penaltySec: 18 },
+      { id: "forensic",label: "Preserve forensic evidence",icon: "🧪", description: "Before any changes, capture memory dumps and network flows for post-incident review", optimal: false, penaltySec: 28 },
+    ],
+  },
+  southeast: {
+    prompt: "Latency attack confirmed. Port logistics and airport systems degrading. Where do you direct response resources?",
+    options: [
+      { id: "defend",  label: "Restore critical links first", icon: "🔗", description: "Prioritize the highest-impact traffic paths — airport and port ops over back-office", optimal: true,  penaltySec: 0 },
+      { id: "log",    label: "Capture full packet trace",    icon: "📋", description: "Run tcpdump on all affected nodes to understand the exact attack pattern first", optimal: false, penaltySec: 22 },
+      { id: "vendor", label: "Engage vendor support",        icon: "🤝", description: "Open emergency support case with network equipment vendor before touching config", optimal: false, penaltySec: 32 },
+    ],
+  },
+  central: {
+    prompt: "CPU hog detected. Manufacturing control systems are offline. Triage your limited remediation window:",
+    options: [
+      { id: "kill",   label: "Kill the process immediately",  icon: "☠️", description: "Terminate the rogue PID — fastest path to restoring normal operations", optimal: true,  penaltySec: 0 },
+      { id: "cgroup", label: "Apply CPU cgroup limits",       icon: "⚙️", description: "Use cgroups to cap CPU usage — safer but slower, process still runs", optimal: false, penaltySec: 16 },
+      { id: "scale",  label: "Scale out more nodes",          icon: "📈", description: "Spin up additional pods to absorb load — the attack spreads to each one", optimal: false, penaltySec: 38 },
+    ],
+  },
+  western: {
+    prompt: "80% packet loss confirmed on Western Interconnect. Cloud providers losing telemetry. What is your first move?",
+    options: [
+      { id: "bgp",    label: "Initiate BGP failover",          icon: "🔌", description: "Immediately cut over to secondary ISP via BGP — restores connectivity in seconds", optimal: true,  penaltySec: 0 },
+      { id: "mtr",    label: "Run MTR path analysis",          icon: "🗺️", description: "Map the exact failure point before switching — adds delay while losses climb", optimal: false, penaltySec: 22 },
+      { id: "bridge", label: "Enable SD-WAN bridge mode",      icon: "🌉", description: "Activate software-defined WAN overlay — correct eventually but slower than BGP", optimal: false, penaltySec: 30 },
+    ],
+  },
+};
+
+/* ─── Decision 3: Containment strategy (mid-remediation, after step 1) ──── */
+
+interface ContainmentOption {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  optimal: boolean;
+  penaltySec: number;
+}
+
+const CONTAINMENT_DECISIONS: Record<
+  SectorTargetId,
+  { prompt: string; options: ContainmentOption[] }
+> = {
+  northeast: {
+    prompt: "Node is cordoned. Attack vector is live. What's your recovery path?",
+    options: [
+      { id: "restore", label: "Redeploy from clean image", icon: "🏗️", description: "Pull a known-good container image and redeploy — guarantees no persistence", optimal: true,  penaltySec: 0 },
+      { id: "patch",   label: "Patch in place",            icon: "🔧", description: "Apply patches to the running container — faster but risks residual backdoors", optimal: false, penaltySec: 20 },
+      { id: "monitor", label: "Monitor and observe",       icon: "👁️", description: "Leave the node isolated and watch for lateral movement before acting", optimal: false, penaltySec: 35 },
+    ],
+  },
+  southeast: {
+    prompt: "Traffic shaping applied. The latency source is partially identified. How do you lock it down?",
+    options: [
+      { id: "acl",     label: "Apply ACLs at ingress",       icon: "🚦", description: "Block the malicious IP ranges at the network boundary — immediate effect", optimal: true,  penaltySec: 0 },
+      { id: "reroute", label: "Reroute via alternate path",  icon: "↩️", description: "Redirect traffic via a clean peering point — adds latency but bypasses attack", optimal: false, penaltySec: 18 },
+      { id: "report",  label: "File ISP abuse report first", icon: "📬", description: "Document and report the source IPs — correct process, but attack continues during review", optimal: false, penaltySec: 30 },
+    ],
+  },
+  central: {
+    prompt: "Rogue process killed. Systems recovering. How do you prevent re-infection?",
+    options: [
+      { id: "immutable", label: "Make filesystem immutable",  icon: "🔒", description: "Set root filesystem to read-only and restrict exec permissions — stops binary reinjection", optimal: true,  penaltySec: 0 },
+      { id: "scan",     label: "Run antimalware scan",        icon: "🔍", description: "Execute a full malware scan across all pods — takes minutes, CPU still stressed during", optimal: false, penaltySec: 22 },
+      { id: "reboot",   label: "Rolling restart all pods",   icon: "🔄", description: "Restart the namespace — clears memory but the binary is still on disk", optimal: false, penaltySec: 30 },
+    ],
+  },
+  western: {
+    prompt: "BGP failover complete. Primary link still compromised. What's your next move?",
+    options: [
+      { id: "blackhole", label: "Null-route the attacker IPs", icon: "⬛", description: "Announce a BGP blackhole for the offending prefixes — cuts the attack at the routing level", optimal: true,  penaltySec: 0 },
+      { id: "firewall",  label: "Add firewall rules",          icon: "🧱", description: "Block IPs at the firewall — correct but slower to propagate than BGP-level action", optimal: false, penaltySec: 20 },
+      { id: "wait",      label: "Wait for primary to recover", icon: "⏳", description: "Monitor the primary link — but the packet-loss source is still active", optimal: false, penaltySec: 40 },
+    ],
+  },
+};
+
+function computeGrade(attackTimeSec: number, optimalTriage: boolean, optimalEscalation?: boolean, optimalContainment?: boolean): string {
   let score = 100;
   if (attackTimeSec > 45) score -= (attackTimeSec - 45) * 0.65;
   if (!optimalTriage) score -= 20;
+  if (optimalEscalation === false) score -= 10;
+  if (optimalContainment === false) score -= 10;
   if (score >= 95) return "A+";
   if (score >= 90) return "A";
   if (score >= 85) return "A-";
@@ -603,6 +703,13 @@ export default function AgentWarRoom({
   const [triagePenalty, setTriagePenalty] = useState(0);
   const [triageOptimal, setTriageOptimal] = useState(false);
   const triageOptimalRef = useRef(false);
+  const [escalationChoice, setEscalationChoice] = useState<string | null>(null);
+  const [escalationOptimal, setEscalationOptimal] = useState(false);
+  const [escalationPenalty, setEscalationPenalty] = useState(0);
+  const [containmentChoice, setContainmentChoice] = useState<string | null>(null);
+  const [containmentOptimal, setContainmentOptimal] = useState(false);
+  const [containmentPenalty, setContainmentPenalty] = useState(0);
+  const [showContainmentDecision, setShowContainmentDecision] = useState(false);
   const [cmdInput, setCmdInput] = useState("");
   const [cmdError, setCmdError] = useState(false);
   const [cmdHint, setCmdHint] = useState(false);
@@ -687,6 +794,32 @@ export default function AgentWarRoom({
       setTimeout(() => handleContinue(), optimal ? 2500 : 4000);
     },
     [handleContinue],
+  );
+
+  const handleEscalationChoice = useCallback(
+    (choiceId: string, optimal: boolean, penaltySec: number) => {
+      setEscalationChoice(choiceId);
+      setEscalationOptimal(optimal);
+      setEscalationPenalty(penaltySec);
+      if (penaltySec > 0) {
+        setDamageStartTime((prev) => (prev ? prev - penaltySec * 1000 : prev));
+      }
+      setTimeout(() => handleContinue(), optimal ? 2000 : 3500);
+    },
+    [handleContinue],
+  );
+
+  const handleContainmentChoice = useCallback(
+    (choiceId: string, optimal: boolean, penaltySec: number) => {
+      setContainmentChoice(choiceId);
+      setContainmentOptimal(optimal);
+      setContainmentPenalty(penaltySec);
+      setShowContainmentDecision(false);
+      if (penaltySec > 0) {
+        setDamageStartTime((prev) => (prev ? prev - penaltySec * 1000 : prev));
+      }
+    },
+    [],
   );
 
   const buildTelemetrySnapshot = useCallback(() => {
@@ -823,6 +956,13 @@ export default function AgentWarRoom({
       setTriagePenalty(0);
       setTriageOptimal(false);
       triageOptimalRef.current = false;
+      setEscalationChoice(null);
+      setEscalationOptimal(false);
+      setEscalationPenalty(0);
+      setContainmentChoice(null);
+      setContainmentOptimal(false);
+      setContainmentPenalty(0);
+      setShowContainmentDecision(false);
       setDamageStartTime(null);
       setLiveDamage(0);
       setAttackElapsed(0);
@@ -1005,6 +1145,13 @@ export default function AgentWarRoom({
       setFixTarget(null);
       fixProcessingRef.current = null;
       setDefenderMode("pending");
+      setEscalationChoice(null);
+      setEscalationOptimal(false);
+      setEscalationPenalty(0);
+      setContainmentChoice(null);
+      setContainmentOptimal(false);
+      setContainmentPenalty(0);
+      setShowContainmentDecision(false);
 
       setPhase("countdown");
       startPhaseTimer();
@@ -1049,6 +1196,9 @@ export default function AgentWarRoom({
             fixResolverRef.current?.();
             fixResolverRef.current = null;
           }, 1500);
+        } else if (stepIndex === 0) {
+          // After first remediation step, trigger containment strategy decision
+          setTimeout(() => setShowContainmentDecision(true), 600);
         }
         return next;
       });
@@ -1147,6 +1297,13 @@ export default function AgentWarRoom({
     setTriagePenalty(0);
     setTriageOptimal(false);
     triageOptimalRef.current = false;
+    setEscalationChoice(null);
+    setEscalationOptimal(false);
+    setEscalationPenalty(0);
+    setContainmentChoice(null);
+    setContainmentOptimal(false);
+    setContainmentPenalty(0);
+    setShowContainmentDecision(false);
     setDamageStartTime(null);
     setLiveDamage(0);
     setAttackElapsed(0);
@@ -1733,6 +1890,37 @@ export default function AgentWarRoom({
           ═══════════════════════════════════════════════════════════════ */}
       {phase === "awaiting-fix" && fixTarget && fixSteps && (
         <div className="scene-fade flex h-full flex-col items-center justify-center px-6 pt-24">
+          {/* Containment strategy decision modal — appears after step 1 */}
+          {showContainmentDecision && !containmentChoice && fixTarget && scenario && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+              <div className="w-full max-w-xl rounded-2xl border border-violet-500/30 bg-[#080810] px-6 py-6 shadow-[0_0_60px_rgba(139,92,246,0.15)]">
+                <div className="mb-4 text-center">
+                  <div className="animate-pulse text-lg font-black uppercase tracking-wider text-violet-400">
+                    🔐 Containment Strategy Decision
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-400">
+                    {CONTAINMENT_DECISIONS[fixTarget]?.prompt ?? "Breach contained. How do you lock it down?"}
+                  </p>
+                  <p className="mt-1 text-[10px] uppercase tracking-wider text-zinc-600">⚠ Damage continues until you decide</p>
+                </div>
+                <div className="space-y-2">
+                  {(CONTAINMENT_DECISIONS[fixTarget]?.options ?? []).map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleContainmentChoice(opt.id, opt.optimal, opt.penaltySec)}
+                      className="group flex w-full items-start gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-left transition-all hover:scale-[1.01] hover:border-violet-500/30 hover:bg-violet-500/10 active:scale-[0.99]"
+                    >
+                      <span className="mt-0.5 text-xl">{opt.icon}</span>
+                      <div>
+                        <div className="text-sm font-bold text-zinc-200 group-hover:text-violet-300">{opt.label}</div>
+                        <div className="mt-0.5 text-xs leading-relaxed text-zinc-500">{opt.description}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {defenderMode === "pending" ? (
             <div className="w-full max-w-xl text-center">
               <h2 className="mb-1 text-2xl font-black uppercase tracking-wider text-emerald-400">
@@ -1945,7 +2133,7 @@ export default function AgentWarRoom({
           <div className="w-full max-w-2xl">
             {/* Grade */}
             {(() => {
-              const g = computeGrade(totalAttackTime, triageOptimal);
+              const g = computeGrade(totalAttackTime, triageOptimal, escalationOptimal || !escalationChoice, containmentOptimal || !containmentChoice);
               return (
                 <div className="mb-5 text-center">
                   <div className={`text-8xl font-black leading-none ${gradeColor(g)} ${gradeGlow(g)}`}>
@@ -1958,7 +2146,7 @@ export default function AgentWarRoom({
               );
             })()}
 
-            {/* Stats 2×2 */}
+            {/* Stats 2×3 */}
             <div className="mb-4 grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-red-500/15 bg-[#0a0a14] px-4 py-3 text-center">
                 <div className="font-mono text-lg font-black text-red-400">
@@ -1977,17 +2165,33 @@ export default function AgentWarRoom({
                 </div>
               </div>
               <div className="rounded-xl border border-cyan-500/15 bg-[#0a0a14] px-4 py-3 text-center">
-                <div
-                  className={`text-lg font-black ${
-                    triageOptimal ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {triageOptimal
-                    ? "✓ Optimal"
-                    : `✗ +${triagePenalty}s penalty`}
+                <div className={`text-lg font-black ${
+                  triageOptimal ? "text-emerald-400" : "text-amber-400"
+                }`}>
+                  {triageOptimal ? "✓ Optimal" : `✗ +${triagePenalty}s`}
                 </div>
                 <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">
                   Triage Decision
+                </div>
+              </div>
+              <div className="rounded-xl border border-cyan-500/15 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className={`text-lg font-black ${
+                  escalationOptimal ? "text-emerald-400" : "text-amber-400"
+                }`}>
+                  {escalationChoice ? (escalationOptimal ? "✓ Optimal" : `✗ +${escalationPenalty}s`) : "—"}
+                </div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">
+                  Escalation Priority
+                </div>
+              </div>
+              <div className="rounded-xl border border-violet-500/15 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className={`text-lg font-black ${
+                  containmentOptimal ? "text-emerald-400" : "text-amber-400"
+                }`}>
+                  {containmentChoice ? (containmentOptimal ? "✓ Optimal" : `✗ +${containmentPenalty}s`) : "—"}
+                </div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">
+                  Containment Strategy
                 </div>
               </div>
               <div className="rounded-xl border border-emerald-500/15 bg-[#0a0a14] px-4 py-3 text-center">
@@ -2088,12 +2292,16 @@ export default function AgentWarRoom({
                 🧠 Key Takeaway
               </div>
               <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-                GenAI compresses incident response from hours to seconds — but
-                your triage decision determined the outcome.{" "}
-                {triageOptimal
-                  ? "You chose optimally, minimizing damage."
-                  : `A sub-optimal triage added $${(triagePenalty * parseLossRate((scenario?.targetSector ?? "northeast") as SectorTargetId)).toLocaleString()} in preventable losses.`}{" "}
-                AI augments human judgment; it doesn&apos;t replace it.
+                GenAI compresses incident response from hours to seconds — but you made{" "}
+                <span className="font-bold text-zinc-200">three critical decisions</span> that shaped the outcome.
+                {!triageOptimal || !escalationOptimal || !containmentOptimal ? (
+                  <> Sub-optimal choices on{" "}
+                    {[!triageOptimal && "triage", !escalationOptimal && "escalation", !containmentOptimal && "containment"].filter(Boolean).join(", ")}{" "}
+                    added preventable losses. </>
+                ) : (
+                  <> All three decisions were optimal — you minimized the exposure window at every gate. </>
+                )}
+                AI surfaces the right answer. You still have to choose it.
               </p>
             </div>
 
@@ -2167,22 +2375,37 @@ export default function AgentWarRoom({
               </p>
             </div>
 
-            {/* Damage callout */}
-            <div className="mb-5 rounded-xl border-2 border-red-500/40 bg-red-500/10 px-6 py-5 text-center shadow-[0_0_40px_rgba(239,68,68,0.1)]">
-              <div className="font-mono text-4xl font-black text-red-400">
-                ${finalDamage.toLocaleString()}
+            {/* Stats grid — all three decision points */}
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-red-500/15 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className="font-mono text-lg font-black text-red-400">${finalDamage.toLocaleString()}</div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">Financial Damage</div>
               </div>
-              <div className="mt-1 text-xs uppercase tracking-widest text-red-400/60">
-                Total Financial Damage
+              <div className="rounded-xl border border-amber-500/15 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className="font-mono text-lg font-black text-amber-400">{totalAttackTime}s</div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">Time Under Attack</div>
               </div>
-              <div className="mt-3 text-sm text-zinc-400">
-                Response time:{" "}
-                <span className="font-bold text-zinc-200">{totalAttackTime}s</span>
-                {" "}·{" "}
-                Triage:{" "}
-                <span className={triageOptimal ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
-                  {triageOptimal ? "Optimal" : "Sub-optimal"}
-                </span>
+              <div className="rounded-xl border border-zinc-700/30 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className={`text-lg font-black ${triageOptimal ? "text-emerald-400" : "text-red-400"}`}>
+                  {triageOptimal ? "✓ Optimal" : "✗ Sub-optimal"}
+                </div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">Triage Decision</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700/30 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className={`text-lg font-black ${!escalationChoice ? "text-zinc-600" : escalationOptimal ? "text-emerald-400" : "text-red-400"}`}>
+                  {!escalationChoice ? "—" : escalationOptimal ? "✓ Optimal" : "✗ Sub-optimal"}
+                </div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">Escalation Priority</div>
+              </div>
+              <div className="rounded-xl border border-zinc-700/30 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className={`text-lg font-black ${!containmentChoice ? "text-zinc-600" : containmentOptimal ? "text-emerald-400" : "text-red-400"}`}>
+                  {!containmentChoice ? "—" : containmentOptimal ? "✓ Optimal" : "✗ Sub-optimal"}
+                </div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">Containment Strategy</div>
+              </div>
+              <div className="rounded-xl border border-red-700/20 bg-[#0a0a14] px-4 py-3 text-center">
+                <div className="text-lg font-black text-red-500">THRESHOLD</div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-600">$15M Gate Hit</div>
               </div>
             </div>
 
