@@ -134,10 +134,10 @@ The dashboard sequences through these phases automatically when a sector is sele
 | 1 | **Choose Sector** | Visitor | 4 sector cards with attack preview and loss/sec |
 | 2 | **Breach Countdown** | System | 3-2-1 countdown, matrix rain, Red Agent primes |
 | 3 | **Red Agent Attacks** | Red AI | Streaming attack narrative, 3D model turns red |
-| 4 | **Analyst Brief** | Analyst AI | Economic impact, situational brief — triage decision |
+| 4 | **Analyst Brief** | Analyst AI | Economic impact, situational brief — triage + escalation decisions |
 | 5 | **Blue Detects** | Blue AI | Correlation analysis, attack signature identified |
 | 6 | **Blue Responds** | Blue AI | Countermeasure plan proposed, waiting for operator |
-| 7 | **Human Operator** | **You** | Type 4 remediation commands in a live terminal |
+| 7 | **Human Operator** | **You** | Type 4 remediation commands in a live terminal (containment decision after step 1) |
 | 8 | **Outcome** | System | After-action scorecard (win) or failure screen (loss) |
 
 > **The $15M threshold:** If cumulative financial damage exceeds $15M before you finish — the scenario aborts. Failure is real.
@@ -183,7 +183,11 @@ The **AI Analyst** streams a situational brief:
 - Correlates telemetry: pod restarts, API latency, error rates
 - Estimates economic exposure and blast radius
 
-**Then a triage decision appears.** Three options — one optimal, two sub-optimal.
+**Then two decisions appear:**
+1. **Triage** — choose the correct initial response.
+2. **Escalation priority** — decide where to allocate limited bandwidth before the Blue Agent deploys.
+
+Each wrong choice adds a time penalty and dinges your final score.
 
 > Sub-optimal triage adds a **time penalty** and reduces your final score.
 > The AI can identify the right answer. The human has to authorize it.
@@ -210,7 +214,7 @@ The Blue Agent proposes its countermeasure plan:
 
 # Phase 7 — Human Operator: Your Turn
 
-Four **remediation commands** appear in sequence on a live terminal.
+Four **remediation commands** appear in sequence on a live terminal — after the first command completes, a **containment strategy** decision modal pops up.
 
 - Expected command appears as **grey ghost text**
 - You type it character by character — text turns **green** as you match

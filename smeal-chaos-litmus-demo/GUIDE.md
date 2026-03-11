@@ -161,7 +161,7 @@ Every line of code in this dashboard was written with **GitHub Copilot** — not
 | **Frontend** | ~2,200-line React/TypeScript dashboard — phases, animations, scoring, terminals, timers |
 | **3D Model** | Three.js power grid facility with per-sector color states and post-processing effects |
 | **AI Agents** | Three streaming GPT-4o-mini panels (Red, Blue, Analyst) with domain-specific prompting |
-| **Gamification** | Phase timer, financial damage ticker, triage decisions, command-typing terminal, letter grades |
+| **Gamification** | Phase timer, financial damage ticker, interactive decision checkpoints (triage, escalation, containment), command-typing terminal, letter grades |
 | **Scoring** | NIST CSF 2.0 card, Regulatory Exposure Meter (FERC → CISA → SEC 8-K → Congressional), after-action scorecard |
 | **Failure gates** | Real-time $15M loss threshold aborts the scenario mid-run |
 | **Infrastructure** | Kubernetes microservices, LitmusChaos experiment YAMLs, Docker Compose, Next.js API proxy routes |
